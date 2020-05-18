@@ -15,12 +15,17 @@ CWD = os.getenv('HOME')
 DEFAULT_USERS = {
     'test_user': '4247'
 }
+cl_socket = None
+d_socket = None
+sv_socket = None
 
 
 class FTPServer(threading.Thread):
     def __init__(self, client_socket, address):
         threading.Thread.__init__(self, daemon=True)
         self.client_socket = client_socket
+        global cl_socket
+        cl_socket = self.client_socket
         self.server_socket = None
         self.data_socket = None
         self.address = address
@@ -77,12 +82,15 @@ class FTPServer(threading.Thread):
                 self.send_msg('500 Syntax error, command unrecognized\r\n')
 
     def open_data_socket(self):
+        global d_socket
         try:
             self.data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            d_socket = self.data_socket  # KSTL
             if self.pasv_mode:
                 self.data_socket, self.address = self.server_socket.accept()
             else:
                 self.data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                d_socket = self.data_socket  # KSTL
                 self.data_socket.connect((self.data_socket_address, self.data_socket_port))
         except socket.error as err:
             print('open_data_socket error:', err)
@@ -108,6 +116,8 @@ class FTPServer(threading.Thread):
     def PASV(self, cmd):
         self.pasv_mode = True
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        global sv_socket
+        sv_socket = self.server_socket  # KSTL
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((HOST_NAME, 0))
         self.server_socket.listen(5)
@@ -316,7 +326,10 @@ class FTPServer(threading.Thread):
         self.client_socket.send(msg.encode('utf-8'))
 
     def send_data(self, data):
-        self.data_socket.send(data.encode('utf-8'))
+        if type(data) == bytes:
+            self.data_socket.send(data)
+        else:
+            self.data_socket.send(data.encode('utf-8'))
 
     def close_connection(self):
         print(f'Closed connection with {self.address}')
@@ -378,4 +391,10 @@ if __name__ == '__main__':
         pass
     else:
         print('Server stopped')
+        if sv_socket:
+            sv_socket.close()
+        if cl_socket:
+            cl_socket.close()
+        if d_socket:
+            d_socket.close()
         sys.exit()
